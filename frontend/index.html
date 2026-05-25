@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UCS Tahmin Modeli</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background: #0f172a; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; }
+    .input-field {
+      background: #0f172a; border: 1px solid #475569; color: #f1f5f9;
+      border-radius: 6px; padding: 8px 12px; width: 100%;
+      transition: border-color .2s;
+    }
+    .input-field:focus { outline: none; border-color: #38bdf8; }
+    .input-field::placeholder { color: #64748b; }
+    .btn-primary {
+      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      color: white; border: none; border-radius: 8px;
+      padding: 12px 28px; cursor: pointer; font-weight: 600;
+      font-size: 15px; transition: opacity .2s, transform .1s;
+    }
+    .btn-primary:hover { opacity: .9; }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .tab-btn { padding: 10px 20px; border-radius: 8px 8px 0 0; font-weight: 500; cursor: pointer; transition: background .15s; }
+    .tab-active { background: #1e293b; color: #38bdf8; border-bottom: 2px solid #38bdf8; }
+    .tab-inactive { background: transparent; color: #64748b; }
+    .tab-disabled { background: transparent; color: #334155; cursor: not-allowed; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .result-card { border: 1px solid; }
+    .fade-in { animation: fadeIn .4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const API = "http://localhost:8000";
+
+const ROCK_HINTS = {
+  Granit:    { Vp:"4.5–6.5", n:"0.5–3.0", rho:"2.60–2.80", Rn:"50–65", Is50:"5–12" },
+  Kirectasi: { Vp:"3.0–5.5", n:"2–12",    rho:"2.40–2.70", Rn:"35–55", Is50:"2–7"  },
+  Kumtasi:   { Vp:"2.5–4.5", n:"8–25",    rho:"2.20–2.55", Rn:"25–45", Is50:"1–5"  },
+};
+
+const FREE_HINTS = { Vp:"2.5–6.5", n:"0.5–25", rho:"2.20–2.80", Rn:"25–65", Is50:"1–12" };
+const FREE_EMPTY = { Vp:"", n:"", rho:"", Rn:"", Is50:"" };
+
+const FIELDS = [
+  { key:"Vp",   label:"P-Dalga Hızı",         unit:"km/s",  step:0.1,  min:1,   max:8   },
+  { key:"n",    label:"Gözeneklilik",           unit:"%",     step:0.1,  min:0.1, max:35  },
+  { key:"rho",  label:"Yoğunluk",              unit:"g/cm³", step:0.01, min:1.5, max:3.5 },
+  { key:"Rn",   label:"Schmidt Çekici (Rn)",   unit:"",      step:1,    min:10,  max:80  },
+  { key:"Is50", label:"Nokta Yükleme (Is50)",  unit:"MPa",   step:0.1,  min:0.1, max:20  },
+];
+
+const DEFAULTS = { Granit: { Vp:5.5, n:1.5, rho:2.72, Rn:57, Is50:9.0 },
+                   Kirectasi: { Vp:4.2, n:7.0, rho:2.55, Rn:45, Is50:4.5 },
+                   Kumtasi: { Vp:3.3, n:16.0, rho:2.35, Rn:35, Is50:2.5 } };
+
+function GuvenBadge({ guven }) {
+  const style = guven === "Yuksek"
+    ? "bg-emerald-900 text-emerald-300"
+    : guven === "Orta"
+    ? "bg-yellow-900 text-yellow-300"
+    : "bg-red-900 text-red-300";
+  return <span className={`badge ${style}`}>{guven} Güven</span>;
+}
+
+function UCSBar({ label, value, max=300, color }) {
+  const pct = Math.min((value / max) * 100, 100);
+  return (
+    <div className="mb-3">
+      <div className="flex justify-between text-sm mb-1">
+        <span className="text-slate-400">{label}</span>
+        <span className="font-bold text-slate-200">{value.toFixed(1)} MPa</span>
+      </div>
+      <div className="w-full h-3 rounded-full bg-slate-700">
+        <div
+          className="h-3 rounded-full transition-all duration-700"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = React.useState("single");
+  const [inputMode, setInputMode] = React.useState("free"); // "preset" | "free"
+  const [rockType, setRockType] = React.useState("Granit");
+  const [form, setForm] = React.useState({ ...FREE_EMPTY });
+  const [loading, setLoading] = React.useState(false);
+  const [shapLoading, setShapLoading] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const [shapImg, setShapImg] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const [apiOk, setApiOk] = React.useState(null);
+
+  React.useEffect(() => {
+    fetch(`${API}/health`)
+      .then(r => r.json())
+      .then(d => setApiOk(d.status === "ok" && d.models_loaded))
+      .catch(() => setApiOk(false));
+  }, []);
+
+  const handleModeChange = (mode) => {
+    setInputMode(mode);
+    setResult(null);
+    setShapImg(null);
+    setError(null);
+    if (mode === "free") {
+      setForm({ ...FREE_EMPTY });
+    } else {
+      setForm({ ...DEFAULTS[rockType] });
+    }
+  };
+
+  const handleRockChange = (rt) => {
+    setRockType(rt);
+    setForm({ ...DEFAULTS[rt] });
+    setResult(null);
+    setShapImg(null);
+    setError(null);
+  };
+
+  const handleChange = (key, val) => {
+    setForm(f => ({ ...f, [key]: val }));
+  };
+
+  const formAsFloats = () => {
+    const out = {};
+    for (const f of FIELDS) {
+      const v = parseFloat(form[f.key]);
+      if (isNaN(v)) return null;
+      out[f.key] = v;
+    }
+    return out;
+  };
+
+  const allFilled = FIELDS.every(f => form[f.key] !== "" && !isNaN(parseFloat(form[f.key])));
+
+  const handlePredict = async () => {
+    const payload = formAsFloats();
+    if (!payload) {
+      setError("Lütfen tüm parametreleri doldurun.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setShapImg(null);
+    try {
+      const res = await fetch(`${API}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "API hatası");
+      }
+      const data = await res.json();
+      setResult(data);
+
+      setShapLoading(true);
+      const sres = await fetch(`${API}/predict-shap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (sres.ok) {
+        const sd = await sres.json();
+        setShapImg(sd.image);
+      }
+    } catch (e) {
+      setError(e.message || "Bağlantı hatası. Backend çalışıyor mu?");
+    } finally {
+      setLoading(false);
+      setShapLoading(false);
+    }
+  };
+
+  const hints = inputMode === "free" ? FREE_HINTS : ROCK_HINTS[rockType];
+
+  return (
+    <div className="min-h-screen p-4 md:p-8">
+      {/* Header */}
+      <div className="max-w-5xl mx-auto mb-8">
+        <div className="flex items-center gap-3 mb-1">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-2xl"
+               style={{background:"linear-gradient(135deg,#0ea5e9,#6366f1)"}}>
+            ⛏
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-100">UCS Tahmin Modeli</h1>
+            <p className="text-slate-400 text-sm">Kaya Dayanımı Tahmini — XGBoost + Linear Ensemble</p>
+          </div>
+          <div className="ml-auto">
+            {apiOk === null && <span className="text-slate-500 text-sm">API kontrol ediliyor…</span>}
+            {apiOk === true  && <span className="badge bg-emerald-900 text-emerald-300">API Bağlı</span>}
+            {apiOk === false && <span className="badge bg-red-900 text-red-300">API Bağlantı Yok</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="max-w-5xl mx-auto mb-0 flex gap-1 border-b border-slate-700">
+        <button
+          className={`tab-btn ${tab === "single" ? "tab-active" : "tab-inactive"}`}
+          onClick={() => setTab("single")}
+        >
+          Tek Numune Tahmini
+        </button>
+        <button className="tab-btn tab-disabled" disabled title="Yakında">
+          CSV Tahmin (Yakında)
+        </button>
+      </div>
+
+      {/* Main panel */}
+      <div className="max-w-5xl mx-auto">
+        <div className="card rounded-b-xl rounded-tr-xl p-6">
+
+          {/* Input mode switcher */}
+          <div className="flex gap-2 mb-6 p-1 rounded-xl bg-slate-900 w-fit">
+            <button
+              onClick={() => handleModeChange("free")}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all
+                ${inputMode === "free"
+                  ? "bg-violet-600 text-white shadow"
+                  : "text-slate-400 hover:text-slate-200"}`}
+            >
+              ✏️ Serbest Değer Girişi
+            </button>
+            <button
+              onClick={() => handleModeChange("preset")}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all
+                ${inputMode === "preset"
+                  ? "bg-sky-600 text-white shadow"
+                  : "text-slate-400 hover:text-slate-200"}`}
+            >
+              🪨 Kaya Tipinden Başla
+            </button>
+          </div>
+
+          {/* Preset mode: rock type selector */}
+          {inputMode === "preset" && (
+            <div className="mb-6">
+              <label className="text-slate-300 text-sm font-semibold mb-2 block">Kaya Tipi</label>
+              <div className="flex gap-3">
+                {["Granit","Kirectasi","Kumtasi"].map(rt => (
+                  <button
+                    key={rt}
+                    onClick={() => handleRockChange(rt)}
+                    className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all border
+                      ${rockType === rt
+                        ? "border-sky-500 text-sky-300 bg-sky-950"
+                        : "border-slate-600 text-slate-400 hover:border-slate-400"}`}
+                  >
+                    {rt === "Granit" ? "🪨 Granit" : rt === "Kirectasi" ? "🧱 Kireçtaşı" : "🏖 Kumtaşı"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Free mode: info banner */}
+          {inputMode === "free" && (
+            <div className="mb-5 px-4 py-3 rounded-lg bg-violet-950 border border-violet-800 text-violet-300 text-sm">
+              Saha ölçümlerinizi doğrudan girin. Kaya tipi seçimi gerekmez — model sadece 5 fiziksel parametreyi kullanır.
+            </div>
+          )}
+
+          {/* Input grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            {FIELDS.map(f => {
+              const val = form[f.key];
+              const isEmpty = val === "" || val === undefined;
+              const isInvalid = !isEmpty && isNaN(parseFloat(val));
+              return (
+                <div key={f.key}>
+                  <label className="text-slate-400 text-xs font-medium mb-1 flex justify-between">
+                    <span>{f.label}{f.unit ? ` (${f.unit})` : ""}</span>
+                    <span className="text-slate-600">{hints[f.key]}</span>
+                  </label>
+                  <input
+                    type="number"
+                    className={`input-field ${isInvalid ? "border-red-500" : ""}`}
+                    step={f.step}
+                    min={f.min}
+                    max={f.max}
+                    value={val}
+                    placeholder={inputMode === "free" ? `ör. ${hints[f.key].split("–")[0]}` : ""}
+                    onChange={e => handleChange(f.key, e.target.value)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Predict button */}
+          <div className="flex justify-center mb-6">
+            <button
+              className="btn-primary flex items-center gap-2"
+              onClick={handlePredict}
+              disabled={loading || apiOk === false || !allFilled}
+              title={!allFilled ? "Tüm alanları doldurun" : ""}
+            >
+              {loading
+                ? <><svg className="spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor"/></svg> Hesaplanıyor…</>
+                : "⚡ UCS Tahmin Et"}
+            </button>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="bg-red-950 border border-red-700 text-red-300 rounded-lg p-4 mb-4 text-sm fade-in">
+              {error}
+            </div>
+          )}
+
+          {/* Result */}
+          {result && (
+            <div className="fade-in">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                {/* UCS sonuclari */}
+                <div className="card rounded-xl p-5">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-slate-200 font-semibold">Tahmin Sonuçları</h3>
+                    <GuvenBadge guven={result.guven} />
+                  </div>
+
+                  {/* Buyuk gosterge */}
+                  <div className="text-center my-4">
+                    <div className="text-5xl font-bold text-sky-400">
+                      {result.ucs_ortalama.toFixed(1)}
+                    </div>
+                    <div className="text-slate-400 text-sm mt-1">MPa (Ortalama)</div>
+                  </div>
+
+                  <div className="mt-4">
+                    <UCSBar label="XGBoost" value={result.ucs_xgboost} color="#10b981" max={280} />
+                    <UCSBar label="Linear Regresyon" value={result.ucs_linear} color="#8b5cf6" max={280} />
+                    <UCSBar label="Ensemble Ortalama" value={result.ucs_ortalama} color="#0ea5e9" max={280} />
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-700 flex items-center gap-2 text-slate-400 text-sm">
+                    <span>🪨</span>
+                    <span>Tahmini kaya tipi: <span className="text-slate-200 font-medium">{result.kaya_tipi_tahmin}</span></span>
+                  </div>
+
+                  {/* Siniflandirma */}
+                  <div className="mt-3">
+                    {(() => {
+                      const v = result.ucs_ortalama;
+                      let cls, color;
+                      if (v > 250)     { cls = "Çok Yüksek Dayanım";  color = "text-red-400"; }
+                      else if (v > 100){ cls = "Yüksek Dayanım";       color = "text-orange-400"; }
+                      else if (v > 50) { cls = "Orta Dayanım";         color = "text-yellow-400"; }
+                      else if (v > 25) { cls = "Düşük Dayanım";        color = "text-blue-400"; }
+                      else             { cls = "Çok Düşük Dayanım";    color = "text-slate-400"; }
+                      return (
+                        <div className={`text-xs font-semibold ${color} text-center mt-2`}>
+                          ISRM Sınıfı: {cls}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* SHAP */}
+                <div className="card rounded-xl p-5">
+                  <h3 className="text-slate-200 font-semibold mb-3">Parametre Etkileri (SHAP)</h3>
+                  {shapLoading && (
+                    <div className="flex items-center justify-center h-40 text-slate-500 text-sm gap-2">
+                      <svg className="spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" strokeOpacity=".25"/>
+                        <path d="M12 2a10 10 0 0 1 10 10"/>
+                      </svg>
+                      SHAP hesaplanıyor…
+                    </div>
+                  )}
+                  {shapImg && !shapLoading && (
+                    <img src={shapImg} alt="SHAP" className="w-full rounded-lg" />
+                  )}
+                  {!shapImg && !shapLoading && (
+                    <p className="text-slate-500 text-sm text-center py-8">SHAP grafik yüklenemedi.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Parametre özeti */}
+              <div className="card rounded-xl p-4 mt-4">
+                <h4 className="text-slate-400 text-xs font-semibold mb-3">Girilen Parametreler</h4>
+                <div className="grid grid-cols-5 gap-2">
+                  {FIELDS.map(f => (
+                    <div key={f.key} className="text-center">
+                      <div className="text-slate-500 text-xs">{f.key}</div>
+                      <div className="text-slate-200 font-semibold text-sm">
+                        {form[f.key] !== "" ? parseFloat(form[f.key]) : "—"}
+                      </div>
+                      <div className="text-slate-600 text-xs">{f.unit}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      <p className="text-center text-slate-700 text-xs mt-8">
+        Eren İNAN · Bitirme Çalışması II · Mayıs 2026
+      </p>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

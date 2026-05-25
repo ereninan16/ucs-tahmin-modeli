@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Sanal ortamlar
+.venv/
+venv/
+env/
+ENV/
+
+# Loglar
+*.log
+logs/
+
+# OS dosyalari
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# IDE / editör
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter checkpoint
+.ipynb_checkpoints/
+
+# Geçici/test çıktıları (notebook kaydettiği grafikler vb.)
+*.png
+*.csv
+
+# .pkl model dosyaları kasıtlı olarak dahil edilmiştir — hariç tutulmaz
