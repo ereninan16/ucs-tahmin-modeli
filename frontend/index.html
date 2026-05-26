@@ -43,7 +43,9 @@
 <div id="root"></div>
 
 <script type="text/babel">
-const API = "http://localhost:8000";
+const API = window.location.hostname === "localhost"
+  ? "http://localhost:8000"
+  : "https://ucs-backend-ccn4.onrender.com";
 
 const ROCK_HINTS = {
   Granit:    { Vp:"4.5–6.5", n:"0.5–3.0", rho:"2.60–2.80", Rn:"50–65", Is50:"5–12" },
