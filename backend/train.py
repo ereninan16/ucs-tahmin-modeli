@@ -108,5 +108,54 @@ def train():
     print(f"Modeller kaydedildi: {MODEL_DIR}")
 
 
+def train_v2():
+    """v2: Gercek veriyle egitilmis 4-parametreli SVR modeli (yogunluk yok)."""
+    import json
+    from sklearn.svm import SVR
+    from sklearn.pipeline import Pipeline
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import OneHotEncoder
+
+    DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "ucs_gercek_veri_224.csv")
+    df = pd.read_csv(DATA_PATH, encoding="utf-8")
+    y = df["UCS"].values
+
+    print("v2a (tursuz SVR) egitiliyor...")
+    Xa = df[["Vp_ms", "n", "SHR", "Is50"]].values
+    model_v2a = Pipeline([
+        ("scaler", StandardScaler()),
+        ("svr", SVR(kernel="rbf", C=500, gamma="auto", epsilon=0.1)),
+    ])
+    model_v2a.fit(Xa, y)
+    joblib.dump(model_v2a, os.path.join(MODEL_DIR, "model_v2a.pkl"))
+
+    print("v2b (kaya turlu SVR) egitiliyor...")
+    Xb = df[["Vp_ms", "n", "SHR", "Is50", "RockType"]].copy()
+    preproc = ColumnTransformer([
+        ("num", StandardScaler(), ["Vp_ms", "n", "SHR", "Is50"]),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), ["RockType"]),
+    ])
+    model_v2b = Pipeline([
+        ("prep", preproc),
+        ("svr", SVR(kernel="rbf", C=500, gamma="auto", epsilon=0.1)),
+    ])
+    model_v2b.fit(Xb, y)
+    joblib.dump(model_v2b, os.path.join(MODEL_DIR, "model_v2b.pkl"))
+
+    kaya_turleri = sorted(df["RockType"].unique().tolist())
+    with open(os.path.join(MODEL_DIR, "kaya_turleri.json"), "w", encoding="utf-8") as f:
+        json.dump(kaya_turleri, f, ensure_ascii=False)
+
+    from sklearn.metrics import r2_score
+    from sklearn.model_selection import cross_val_score
+    cv_r2a = cross_val_score(model_v2a, Xa, y, cv=5, scoring="r2").mean()
+    cv_r2b = cross_val_score(model_v2b, Xb, y, cv=5, scoring="r2").mean()
+    print(f"v2a CV R2: {cv_r2a:.4f}")
+    print(f"v2b CV R2: {cv_r2b:.4f}")
+    print(f"Kaya turleri: {kaya_turleri}")
+    print("v2 modelleri kaydedildi.")
+
+
 if __name__ == "__main__":
     train()
+    train_v2()

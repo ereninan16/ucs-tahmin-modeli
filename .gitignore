@@ -39,5 +39,6 @@ desktop.ini
 # Geçici/test çıktıları (notebook kaydettiği grafikler vb.)
 *.png
 *.csv
+!backend/data/*.csv
 
 # .pkl model dosyaları kasıtlı olarak dahil edilmiştir — hariç tutulmaz

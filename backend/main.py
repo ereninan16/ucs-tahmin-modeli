@@ -3,7 +3,9 @@ UCS Tahmin Modeli - FastAPI Backend
 """
 import base64
 import io
+import json
 import os
+from typing import Optional
 
 import joblib
 import matplotlib
@@ -18,7 +20,7 @@ from pydantic import BaseModel, Field
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "model")
 
-app = FastAPI(title="UCS Tahmin API", version="1.0.0")
+app = FastAPI(title="UCS Tahmin API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,19 +36,35 @@ _scaler = None
 _features = None
 _explainer = None
 
+# v2 modelleri
+_v2a = None
+_v2b = None
+_kaya_turleri: list = []
+
 
 @app.on_event("startup")
 def load_models():
     global _xgb, _lr, _scaler, _features, _explainer
+    global _v2a, _v2b, _kaya_turleri
     try:
         _xgb = joblib.load(os.path.join(MODEL_DIR, "model_xgboost.pkl"))
         _lr = joblib.load(os.path.join(MODEL_DIR, "model_linear_regression.pkl"))
         _scaler = joblib.load(os.path.join(MODEL_DIR, "scaler.pkl"))
         _features = joblib.load(os.path.join(MODEL_DIR, "features.pkl"))
         _explainer = shap.TreeExplainer(_xgb)
-        print("Modeller yuklendi.")
+        print("v1 modelleri yuklendi.")
     except FileNotFoundError as e:
-        print(f"Model dosyasi bulunamadi: {e}. train.py'yi calistirin.")
+        print(f"v1 model dosyasi bulunamadi: {e}. train.py'yi calistirin.")
+
+    try:
+        _v2a = joblib.load(os.path.join(MODEL_DIR, "model_v2a.pkl"))
+        _v2b = joblib.load(os.path.join(MODEL_DIR, "model_v2b.pkl"))
+        kt_path = os.path.join(MODEL_DIR, "kaya_turleri.json")
+        with open(kt_path, encoding="utf-8") as f:
+            _kaya_turleri = json.load(f)
+        print(f"v2 modelleri yuklendi. Kaya turleri: {_kaya_turleri}")
+    except FileNotFoundError as e:
+        print(f"v2 model dosyasi bulunamadi: {e}. train.py'yi calistirin.")
 
 
 # --- Kaya tipi kural tabanli tahmin ---
@@ -141,3 +159,72 @@ def predict_shap(girdi: TahminGirdi):
     buf.seek(0)
     encoded = base64.b64encode(buf.read()).decode()
     return {"image": f"data:image/png;base64,{encoded}"}
+
+
+# ============================================================
+# v2 — Gercek Veri Modeli (SVR, 4 parametre, yogunluk yok)
+# ============================================================
+
+def _isrm_sinifi(ucs: float) -> str:
+    if ucs < 25:
+        return "Çok Zayıf (R1)"
+    if ucs < 50:
+        return "Zayıf (R2)"
+    if ucs < 100:
+        return "Orta Dayanımlı (R3)"
+    if ucs < 250:
+        return "Dayanımlı (R4)"
+    return "Çok Dayanımlı (R5)"
+
+
+class PredictV2Request(BaseModel):
+    vp_ms: float = Field(..., ge=500, le=10000, description="P-dalga hizi (m/s)")
+    n: float = Field(..., ge=0.01, le=35.0, description="Gozeneklilik (%)")
+    shr: float = Field(..., ge=10.0, le=80.0, description="Schmidt rebound (Rn)")
+    is50: float = Field(..., ge=0.1, le=20.0, description="Nokta yukleme indeksi (MPa)")
+    rock_type: Optional[str] = None
+
+
+class PredictV2Response(BaseModel):
+    ucs_mpa: float
+    model: str
+    model_r2: float
+    isrm_sinifi: str
+
+
+@app.get("/v2/kaya-turleri")
+def get_kaya_turleri():
+    return {"kaya_turleri": _kaya_turleri}
+
+
+@app.post("/v2/predict", response_model=PredictV2Response)
+def predict_v2(req: PredictV2Request):
+    if _v2a is None:
+        raise HTTPException(503, "v2 modeli yuklenemedi. Lutfen train.py calistirin.")
+
+    use_v2b = req.rock_type is not None and req.rock_type in _kaya_turleri
+
+    if use_v2b:
+        Xb = pd.DataFrame([{
+            "Vp_ms": req.vp_ms,
+            "n": req.n,
+            "SHR": req.shr,
+            "Is50": req.is50,
+            "RockType": req.rock_type,
+        }])
+        ucs = float(_v2b.predict(Xb)[0])
+        model_name = "SVR (kaya türlü)"
+        r2 = 0.68
+    else:
+        Xa = np.array([[req.vp_ms, req.n, req.shr, req.is50]])
+        ucs = float(_v2a.predict(Xa)[0])
+        model_name = "SVR (türsüz)"
+        r2 = 0.62
+
+    ucs = round(max(1.0, ucs), 1)
+    return PredictV2Response(
+        ucs_mpa=ucs,
+        model=model_name,
+        model_r2=r2,
+        isrm_sinifi=_isrm_sinifi(ucs),
+    )
