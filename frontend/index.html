@@ -454,8 +454,8 @@ function App() {
             {/* Model bilgisi */}
             <div className="mb-5 text-xs text-slate-500">
               {v2Mode === "none"
-                ? "v2a · SVR RBF · CV R² = 0.62 · kaya türü gerekmez"
-                : "v2b · SVR RBF + OneHot · CV R² = 0.68 · kaya türü seçimi gerekli"}
+                ? "v2a · SVR RBF · CV R² = 0.70 · kaya türü gerekmez"
+                : "v2b · SVR RBF + OneHot · CV R² = 0.86 · kaya türü seçimi gerekli"}
             </div>
 
             {/* Kaya türü dropdown (sadece typed modda) */}
@@ -569,7 +569,7 @@ function App() {
                       {v2Mode === "typed" && (
                         <div className="flex gap-2">
                           <span className="text-emerald-400 mt-0.5">▸</span>
-                          <span>Kaya türü bilgisi dahil edildi — daha yüksek R² (0.68)</span>
+                          <span>Kaya türü bilgisi dahil edildi — daha yüksek R² (0.86)</span>
                         </div>
                       )}
                     </div>

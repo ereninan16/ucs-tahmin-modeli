@@ -147,9 +147,10 @@ def train_v2():
         json.dump(kaya_turleri, f, ensure_ascii=False)
 
     from sklearn.metrics import r2_score
-    from sklearn.model_selection import cross_val_score
-    cv_r2a = cross_val_score(model_v2a, Xa, y, cv=5, scoring="r2").mean()
-    cv_r2b = cross_val_score(model_v2b, Xb, y, cv=5, scoring="r2").mean()
+    from sklearn.model_selection import cross_val_score, KFold
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    cv_r2a = cross_val_score(model_v2a, Xa, y, cv=kf, scoring="r2").mean()
+    cv_r2b = cross_val_score(model_v2b, Xb, y, cv=kf, scoring="r2").mean()
     print(f"v2a CV R2: {cv_r2a:.4f}")
     print(f"v2b CV R2: {cv_r2b:.4f}")
     print(f"Kaya turleri: {kaya_turleri}")

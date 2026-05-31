@@ -214,12 +214,12 @@ def predict_v2(req: PredictV2Request):
         }])
         ucs = float(_v2b.predict(Xb)[0])
         model_name = "SVR (kaya türlü)"
-        r2 = 0.68
+        r2 = 0.86
     else:
         Xa = np.array([[req.vp_ms, req.n, req.shr, req.is50]])
         ucs = float(_v2a.predict(Xa)[0])
         model_name = "SVR (türsüz)"
-        r2 = 0.62
+        r2 = 0.70
 
     ucs = round(max(1.0, ucs), 1)
     return PredictV2Response(
