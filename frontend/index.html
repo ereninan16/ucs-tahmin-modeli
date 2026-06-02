@@ -183,10 +183,30 @@ function App() {
   const [csvError, setCsvError] = React.useState(null);
 
   React.useEffect(() => {
-    fetch(`${API}/health`)
-      .then(r => r.json())
-      .then(d => setApiOk(d.status === "ok" && d.models_loaded))
-      .catch(() => setApiOk(false));
+    let attempts = 0;
+    const MAX = 10;
+    const INTERVAL = 7000; // 7 sn arayla, toplamda ~70 sn dener
+    function checkHealth() {
+      fetch(`${API}/health`, { signal: AbortSignal.timeout(6000) })
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === "ok" && d.models_loaded) {
+            setApiOk(true);
+          } else {
+            throw new Error("not ready");
+          }
+        })
+        .catch(() => {
+          attempts++;
+          if (attempts < MAX) {
+            setApiOk("waking");
+            setTimeout(checkHealth, INTERVAL);
+          } else {
+            setApiOk(false);
+          }
+        });
+    }
+    checkHealth();
     fetch(`${API}/v2/kaya-turleri`)
       .then(r => r.json())
       .then(d => {
@@ -339,9 +359,14 @@ function App() {
             <p className="text-slate-400 text-sm">{subtitle}</p>
           </div>
           <div className="ml-auto">
-            {apiOk === null && <span className="text-slate-500 text-sm">API kontrol ediliyor…</span>}
-            {apiOk === true  && <span className="badge bg-emerald-900 text-emerald-300">API Bağlı</span>}
-            {apiOk === false && <span className="badge bg-red-900 text-red-300">API Bağlantı Yok</span>}
+            {apiOk === null   && <span className="text-slate-500 text-sm">API kontrol ediliyor…</span>}
+            {apiOk === "waking" && (
+              <span className="badge bg-amber-900 text-amber-300 flex items-center gap-1.5">
+                <Spinner /> Sunucu Uyandırılıyor…
+              </span>
+            )}
+            {apiOk === true   && <span className="badge bg-emerald-900 text-emerald-300">API Bağlı</span>}
+            {apiOk === false  && <span className="badge bg-red-900 text-red-300">API Bağlantı Yok</span>}
           </div>
         </div>
       </div>
