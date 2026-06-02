@@ -185,10 +185,12 @@ function App() {
   React.useEffect(() => {
     let attempts = 0;
     const MAX = 10;
-    const INTERVAL = 7000; // 7 sn arayla, toplamda ~70 sn dener
+    const INTERVAL = 7000;
     function checkHealth() {
-      fetch(`${API}/health`, { signal: AbortSignal.timeout(6000) })
-        .then(r => r.json())
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      fetch(`${API}/health`, { signal: ctrl.signal })
+        .then(r => { clearTimeout(timer); return r.json(); })
         .then(d => {
           if (d.status === "ok" && d.models_loaded) {
             setApiOk(true);
@@ -197,6 +199,7 @@ function App() {
           }
         })
         .catch(() => {
+          clearTimeout(timer);
           attempts++;
           if (attempts < MAX) {
             setApiOk("waking");
