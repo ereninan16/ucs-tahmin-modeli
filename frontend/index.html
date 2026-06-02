@@ -67,6 +67,37 @@ const DEFAULTS = {
   Kumtasi:   { Vp:3.3,  n:16.0, rho:2.35, Rn:35, Is50:2.5 },
 };
 
+/* ── Kaya renk paleti (CSS gradient) ───────────────────── */
+const ROCK_COLORS = {
+  "Granit":    ["#5a5a5a", "#1e1e1e"],
+  "Kirectasi": ["#b8b8a8", "#787868"],
+  "Kumtasi":   ["#c89050", "#7a4e20"],
+  "Kireçtaşı": ["#b8b8a8", "#787868"],
+  "Kumtaşı":   ["#c89050", "#7a4e20"],
+  "Claystone": ["#a85030", "#601810"],
+  "Dolomit":   ["#6888a0", "#304858"],
+  "Marl":      ["#788050", "#404818"],
+  "Slate":     ["#384858", "#101820"],
+  "Travertine":["#c8b060", "#806820"],
+  "Şist":      ["#686878", "#282838"],
+};
+
+function RockSwatch({ name, size }) {
+  const [c1, c2] = ROCK_COLORS[name] || ["#475569", "#1e293b"];
+  const bg = `linear-gradient(145deg, ${c1}, ${c2})`;
+  const shadow = `0 2px 10px ${c2}aa`;
+  if (size === "dot") {
+    return <div style={{ background: bg, width:18, height:18, borderRadius:999, flexShrink:0 }} />;
+  }
+  return (
+    <div style={{
+      background: bg, boxShadow: shadow,
+      width:52, height:52, borderRadius:10, flexShrink:0,
+      border:"2px solid rgba(255,255,255,0.08)",
+    }} />
+  );
+}
+
 /* ── V2 sabitler ────────────────────────────────────────── */
 const V2_FIELDS = [
   { key:"vp_ms", label:"P-Dalga Hızı",         unit:"m/s", step:10,  min:500,  max:10000 },
@@ -366,13 +397,21 @@ function App() {
               <div className="mb-6">
                 <label className="text-slate-300 text-sm font-semibold mb-2 block">Kaya Tipi</label>
                 <div className="flex gap-3">
-                  {["Granit","Kirectasi","Kumtasi"].map(rt => (
-                    <button key={rt} onClick={() => handleRockChange(rt)}
-                      className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all border
-                        ${rockType === rt
-                          ? "border-sky-500 text-sky-300 bg-sky-950"
-                          : "border-slate-600 text-slate-400 hover:border-slate-400"}`}>
-                      {rt === "Granit" ? "🪨 Granit" : rt === "Kirectasi" ? "🧱 Kireçtaşı" : "🏖 Kumtaşı"}
+                  {[
+                    { key:"Granit",    label:"Granit",    desc:"Magmatik · 100–250 MPa" },
+                    { key:"Kirectasi", label:"Kireçtaşı", desc:"Sedimanter · 30–150 MPa" },
+                    { key:"Kumtasi",   label:"Kumtaşı",   desc:"Sedimanter · 20–100 MPa" },
+                  ].map(({ key, label, desc }) => (
+                    <button key={key} onClick={() => handleRockChange(key)}
+                      className={`flex-1 rounded-xl transition-all border flex flex-col items-center gap-3 py-4 px-2
+                        ${rockType === key
+                          ? "border-sky-500 bg-sky-950"
+                          : "border-slate-700 bg-slate-800 hover:border-slate-500"}`}>
+                      <RockSwatch name={key} size="lg" />
+                      <div className="text-center">
+                        <div className={`font-semibold text-sm ${rockType === key ? "text-sky-300" : "text-slate-300"}`}>{label}</div>
+                        <div className="text-slate-500 text-xs mt-0.5">{desc}</div>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -596,10 +635,11 @@ function App() {
               </button>
               <button
                 onClick={() => handleV2ModeChange("typed")}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2
                   ${v2Mode === "typed" ? "bg-sky-600 text-white shadow" : "text-slate-400 hover:text-slate-200"}`}
               >
-                🪨 Kaya Türlü (v2b)
+                <div style={{width:14,height:14,borderRadius:4,background:"linear-gradient(135deg,#5a5a5a,#1e1e1e)",flexShrink:0}} />
+                Kaya Türlü (v2b)
               </button>
             </div>
 
@@ -615,16 +655,22 @@ function App() {
               <div className="mb-5">
                 <label className="text-slate-300 text-sm font-semibold mb-2 block">Kaya Türü</label>
                 {kayaTurleri.length > 0 ? (
-                  <select
-                    className="input-field"
-                    value={v2RockType}
-                    onChange={e => setV2RockType(e.target.value)}
-                    style={{maxWidth:"260px"}}
-                  >
-                    {kayaTurleri.map(kt => (
-                      <option key={kt} value={kt}>{kt}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-3">
+                    <RockSwatch name={v2RockType} size="lg" />
+                    <div>
+                      <select
+                        className="input-field"
+                        value={v2RockType}
+                        onChange={e => setV2RockType(e.target.value)}
+                        style={{maxWidth:"220px"}}
+                      >
+                        {kayaTurleri.map(kt => (
+                          <option key={kt} value={kt}>{kt}</option>
+                        ))}
+                      </select>
+                      <div className="text-slate-500 text-xs mt-1.5">Seçime göre renk güncellenir</div>
+                    </div>
+                  </div>
                 ) : (
                   <span className="text-slate-500 text-sm">Kaya türleri yükleniyor…</span>
                 )}
