@@ -240,7 +240,18 @@ async def predict_batch(file: UploadFile = File(...)):
     fname = (file.filename or "").lower()
     try:
         if fname.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(contents))
+            text = None
+            for enc in ("utf-8-sig", "utf-8", "cp1254", "latin-1"):
+                try:
+                    text = contents.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if text is None:
+                return JSONResponse(status_code=400, content={"error": "Dosya kodlaması okunamadı."})
+            ilk_satir = text.split("\n")[0]
+            ayirici = ";" if ilk_satir.count(";") > ilk_satir.count(",") else ","
+            df = pd.read_csv(io.StringIO(text), sep=ayirici)
         elif fname.endswith((".xlsx", ".xls")):
             df = pd.read_excel(io.BytesIO(contents))
         else:
@@ -249,6 +260,8 @@ async def predict_batch(file: UploadFile = File(...)):
             })
     except Exception as e:
         return JSONResponse(status_code=400, content={"error": f"Dosya okunamadı: {e}"})
+
+    df.columns = [str(c).strip().replace("﻿", "") for c in df.columns]
 
     zorunlu = ["Vp_ms", "n", "SHR", "Is50"]
     eksik = [c for c in zorunlu if c not in df.columns]
