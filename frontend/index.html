@@ -145,6 +145,12 @@ function App() {
   const [v2Result, setV2Result] = React.useState(null);
   const [v2Error, setV2Error] = React.useState(null);
 
+  /* ── Batch state ── */
+  const csvInputRef = React.useRef(null);
+  const [csvLoading, setCsvLoading] = React.useState(false);
+  const [csvRows, setCsvRows] = React.useState(null);
+  const [csvError, setCsvError] = React.useState(null);
+
   React.useEffect(() => {
     fetch(`${API}/health`)
       .then(r => r.json())
@@ -233,10 +239,50 @@ function App() {
     } finally { setV2Loading(false); }
   };
 
+  /* ── Batch handlers ── */
+  const handleCsvPredict = async () => {
+    const f = csvInputRef.current?.files?.[0];
+    if (!f) { setCsvError("Lütfen bir CSV veya Excel dosyası seçin."); return; }
+    setCsvLoading(true); setCsvError(null); setCsvRows(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await fetch(`${API}/v2/predict-batch`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setCsvRows(data.sonuclar);
+    } catch (e) {
+      setCsvError(e.message || "Bağlantı hatası.");
+    } finally { setCsvLoading(false); }
+  };
+
+  const handleCsvDownload = () => {
+    if (!csvRows) return;
+    const cols = ["Vp_ms","n","SHR","Is50","RockType","UCS_Tahmin","ISRM_Sinifi","Model"];
+    let csv = cols.join(",") + "\n";
+    csvRows.forEach(r => {
+      csv += cols.map(c => r[c] ?? "").join(",") + "\n";
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = "ucs_tahmin_sonuclari.csv";
+    a.click();
+  };
+
+  const handleTemplateDownload = () => {
+    const csv = "Vp_ms,n,SHR,Is50,RockType\n5500,0.5,57,8.0,Granit\n4200,7.5,46,4.5,Kireçtaşı\n3000,15.0,32,2.2,Kumtaşı\n5800,0.3,60,9.5,\n4800,3.0,50,5.0,\n";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = "ornek_sablon.csv";
+    a.click();
+  };
+
   const hints = inputMode === "free" ? FREE_HINTS : ROCK_HINTS[rockType];
   const subtitle = tab === "single"
     ? "Kaya Dayanımı Tahmini — XGBoost + Linear Ensemble"
-    : "Gerçek Veri Modeli — SVR, 224 Saha Ölçümü";
+    : tab === "v2"
+    ? "Gerçek Veri Modeli — SVR, 224 Saha Ölçümü"
+    : "CSV / Excel Toplu Tahmin — v2 Modeli";
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -273,6 +319,12 @@ function App() {
           onClick={() => setTab("v2")}
         >
           Gerçek Veri Modeli (v2)
+        </button>
+        <button
+          className={`tab-btn ${tab === "batch" ? "tab-active" : "tab-inactive"}`}
+          onClick={() => setTab("batch")}
+        >
+          CSV / Excel Toplu Tahmin
         </button>
       </div>
 
@@ -418,6 +470,97 @@ function App() {
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+          </>)}
+
+          {/* ══════════ BATCH TAB ══════════ */}
+          {tab === "batch" && (<>
+
+            <div className="mb-5 px-4 py-3 rounded-lg bg-sky-950 border border-sky-800 text-sky-300 text-sm">
+              <span className="font-semibold">CSV veya Excel dosyanızı yükleyin.</span>{" "}
+              Gerekli sütunlar: <span className="font-mono font-semibold">Vp_ms, n, SHR, Is50</span>.
+              Opsiyonel: <span className="font-mono font-semibold">RockType</span> — doluysa v2b (kaya türlü), boşsa v2a (türsüz) kullanılır.
+              <button
+                onClick={handleTemplateDownload}
+                className="ml-3 px-3 py-1 rounded text-xs font-semibold bg-sky-800 hover:bg-sky-700 text-sky-100 transition-colors"
+              >
+                Örnek Şablon İndir
+              </button>
+            </div>
+
+            {/* Dosya yükleme */}
+            <div className="flex items-center gap-4 mb-6">
+              <label className="flex-1 flex items-center gap-3 px-4 py-5 rounded-xl border-2 border-dashed border-slate-600 hover:border-sky-500 cursor-pointer transition-colors bg-slate-900">
+                <span className="text-2xl">📂</span>
+                <div>
+                  <div className="text-slate-300 text-sm font-medium">CSV veya Excel dosyası seç</div>
+                  <div className="text-slate-500 text-xs mt-0.5">.csv · .xlsx · .xls</div>
+                </div>
+                <input
+                  ref={csvInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={() => { setCsvRows(null); setCsvError(null); }}
+                />
+              </label>
+              <button
+                className="btn-primary flex items-center gap-2 whitespace-nowrap"
+                onClick={handleCsvPredict}
+                disabled={csvLoading || apiOk === false}
+              >
+                {csvLoading ? <><Spinner /> Tahmin yapılıyor…</> : "⚡ Toplu Tahmin Yap"}
+              </button>
+            </div>
+
+            {csvError && (
+              <div className="bg-red-950 border border-red-700 text-red-300 rounded-lg p-4 mb-4 text-sm fade-in">
+                {csvError}
+              </div>
+            )}
+
+            {csvRows && (
+              <div className="fade-in">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-slate-300 text-sm font-semibold">{csvRows.length} satır tahmin edildi</span>
+                  <button
+                    onClick={handleCsvDownload}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-800 hover:bg-emerald-700 text-emerald-100 transition-colors"
+                  >
+                    Sonuçları İndir (CSV)
+                  </button>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-700">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-900 text-slate-400 text-xs uppercase">
+                        {["Vp (m/s)","n (%)","SHR","Is50","Kaya Türü","UCS Tahmin (MPa)","ISRM Sınıfı","Model"].map(h => (
+                          <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRows.map((r, i) => (
+                        <tr key={i} className={`border-t border-slate-700 ${i % 2 === 0 ? "bg-slate-800" : "bg-slate-850"} hover:bg-slate-700 transition-colors`}>
+                          <td className="px-3 py-2 text-slate-300">{r.Vp_ms}</td>
+                          <td className="px-3 py-2 text-slate-300">{r.n}</td>
+                          <td className="px-3 py-2 text-slate-300">{r.SHR}</td>
+                          <td className="px-3 py-2 text-slate-300">{r.Is50}</td>
+                          <td className="px-3 py-2 text-slate-400">{r.RockType}</td>
+                          <td className="px-3 py-2">
+                            {r.UCS_Tahmin != null
+                              ? <span className="font-bold text-sky-400">{r.UCS_Tahmin}</span>
+                              : <span className="text-red-400">HATA</span>}
+                          </td>
+                          <td className={`px-3 py-2 font-medium text-xs ${isrmColor(r.ISRM_Sinifi)}`}>{r.ISRM_Sinifi}</td>
+                          <td className="px-3 py-2 text-slate-500 text-xs font-mono">{r.Model}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

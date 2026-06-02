@@ -14,8 +14,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import shap
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "model")
@@ -228,3 +229,71 @@ def predict_v2(req: PredictV2Request):
         model_r2=r2,
         isrm_sinifi=_isrm_sinifi(ucs),
     )
+
+
+@app.post("/v2/predict-batch")
+async def predict_batch(file: UploadFile = File(...)):
+    if _v2a is None:
+        return JSONResponse(status_code=503, content={"error": "v2 modeli yuklenemedi."})
+
+    contents = await file.read()
+    fname = (file.filename or "").lower()
+    try:
+        if fname.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents))
+        elif fname.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            return JSONResponse(status_code=400, content={
+                "error": "Sadece CSV veya Excel (.xlsx/.xls) dosyaları desteklenir."
+            })
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": f"Dosya okunamadı: {e}"})
+
+    zorunlu = ["Vp_ms", "n", "SHR", "Is50"]
+    eksik = [c for c in zorunlu if c not in df.columns]
+    if eksik:
+        return JSONResponse(status_code=400, content={
+            "error": f"Eksik sütun(lar): {', '.join(eksik)}. Gerekli: Vp_ms, n, SHR, Is50 (+ opsiyonel RockType)"
+        })
+
+    if "RockType" not in df.columns:
+        df["RockType"] = ""
+
+    sonuclar = []
+    for _, row in df.iterrows():
+        try:
+            rock = str(row["RockType"]).strip() if pd.notna(row["RockType"]) else ""
+            if rock and rock.lower() not in ("", "nan", "none"):
+                Xb = pd.DataFrame([{
+                    "Vp_ms": float(row["Vp_ms"]), "n": float(row["n"]),
+                    "SHR": float(row["SHR"]), "Is50": float(row["Is50"]),
+                    "RockType": rock,
+                }])
+                pred = round(max(1.0, float(_v2b.predict(Xb)[0])), 1)
+                kullanilan = "v2b"
+            else:
+                Xa = np.array([[float(row["Vp_ms"]), float(row["n"]),
+                                float(row["SHR"]), float(row["Is50"])]])
+                pred = round(max(1.0, float(_v2a.predict(Xa)[0])), 1)
+                kullanilan = "v2a"
+                rock = ""
+
+            sonuclar.append({
+                "Vp_ms": row["Vp_ms"], "n": row["n"],
+                "SHR": row["SHR"], "Is50": row["Is50"],
+                "RockType": rock if rock else "-",
+                "UCS_Tahmin": pred,
+                "ISRM_Sinifi": _isrm_sinifi(pred),
+                "Model": kullanilan,
+            })
+        except Exception as e:
+            sonuclar.append({
+                "Vp_ms": row.get("Vp_ms", "?"), "n": row.get("n", "?"),
+                "SHR": row.get("SHR", "?"), "Is50": row.get("Is50", "?"),
+                "RockType": str(row.get("RockType", "-")),
+                "UCS_Tahmin": None, "ISRM_Sinifi": "HATA", "Model": "-",
+                "Hata": str(e),
+            })
+
+    return {"satir_sayisi": len(sonuclar), "sonuclar": sonuclar}
