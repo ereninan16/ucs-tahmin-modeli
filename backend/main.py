@@ -167,15 +167,19 @@ def predict_shap(girdi: TahminGirdi):
 # ============================================================
 
 def _isrm_sinifi(ucs: float) -> str:
+    if ucs < 1:
+        return "Son Derece Düşük Dayanımlı (R0)"
+    if ucs < 5:
+        return "Çok Düşük Dayanımlı (R1)"
     if ucs < 25:
-        return "Çok Zayıf (R1)"
+        return "Düşük Dayanımlı (R2)"
     if ucs < 50:
-        return "Zayıf (R2)"
-    if ucs < 100:
         return "Orta Dayanımlı (R3)"
+    if ucs < 100:
+        return "Yüksek Dayanımlı (R4)"
     if ucs < 250:
-        return "Dayanımlı (R4)"
-    return "Çok Dayanımlı (R5)"
+        return "Çok Yüksek Dayanımlı (R5)"
+    return "Aşırı Yüksek Dayanımlı (R6)"
 
 
 class PredictV2Request(BaseModel):

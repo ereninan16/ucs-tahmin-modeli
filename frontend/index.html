@@ -108,12 +108,13 @@ const V2_FIELDS = [
 const V2_EMPTY = { vp_ms:"", n:"", shr:"", is50:"" };
 
 function isrmColor(sinif) {
-  if (sinif.startsWith("Çok Zayıf"))  return "text-slate-400";
-  if (sinif.startsWith("Zayıf"))      return "text-blue-400";
-  if (sinif.startsWith("Orta"))       return "text-yellow-400";
-  if (sinif.startsWith("Dayanımlı")
-    && !sinif.startsWith("Çok D"))    return "text-orange-400";
-  return "text-red-400";
+  if (sinif.startsWith("Son Derece")) return "text-slate-500";
+  if (sinif.startsWith("Çok Düşük")) return "text-slate-400";
+  if (sinif.startsWith("Düşük"))     return "text-blue-400";
+  if (sinif.startsWith("Orta"))      return "text-yellow-400";
+  if (sinif.startsWith("Yüksek"))    return "text-orange-400";
+  if (sinif.startsWith("Çok Yüksek"))return "text-red-400";
+  return "text-purple-400"; // R6
 }
 
 /* ── Ortak bileşenler ───────────────────────────────────── */
@@ -512,11 +513,13 @@ function App() {
                       {(() => {
                         const v = result.ucs_ortalama;
                         let cls, color;
-                        if (v > 250)      { cls = "Çok Dayanımlı (R5)";  color = "text-red-400"; }
-                        else if (v > 100) { cls = "Dayanımlı (R4)";       color = "text-orange-400"; }
-                        else if (v > 50)  { cls = "Orta Dayanımlı (R3)"; color = "text-yellow-400"; }
-                        else if (v > 25)  { cls = "Zayıf (R2)";           color = "text-blue-400"; }
-                        else              { cls = "Çok Zayıf (R1)";       color = "text-slate-400"; }
+                        if (v >= 250)      { cls = "Aşırı Yüksek Dayanımlı (R6)"; color = "text-purple-400"; }
+                        else if (v >= 100) { cls = "Çok Yüksek Dayanımlı (R5)";   color = "text-red-400"; }
+                        else if (v >= 50)  { cls = "Yüksek Dayanımlı (R4)";        color = "text-orange-400"; }
+                        else if (v >= 25)  { cls = "Orta Dayanımlı (R3)";          color = "text-yellow-400"; }
+                        else if (v >= 5)   { cls = "Düşük Dayanımlı (R2)";         color = "text-blue-400"; }
+                        else if (v >= 1)   { cls = "Çok Düşük Dayanımlı (R1)";     color = "text-slate-400"; }
+                        else               { cls = "Son Derece Düşük Dayanımlı (R0)"; color = "text-slate-500"; }
                         return <div className={`text-xs font-semibold ${color} text-center mt-2`}>ISRM Sınıfı: {cls}</div>;
                       })()}
                     </div>
