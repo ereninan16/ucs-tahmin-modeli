@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>UCS Tahmin Modeli</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.9/babel.min.js"></script>
   <style>
     body { background: #0f172a; font-family: 'Segoe UI', system-ui, sans-serif; }
     .card { background: #1e293b; border: 1px solid #334155; }
@@ -313,7 +313,7 @@ function App() {
 
   const handleCsvDownload = () => {
     if (!csvRows) return;
-    const BOM = "﻿";
+    const BOM = "\ufeff";
     const cols = ["Vp_ms","n","SHR","Is50","RockType","UCS_Tahmin","ISRM_Sinifi","Model"];
     let csv = BOM + cols.join(";") + "\r\n";
     csvRows.forEach(r => {
@@ -326,7 +326,7 @@ function App() {
   };
 
   const handleTemplateDownload = () => {
-    const BOM = "﻿";
+    const BOM = "\ufeff";
     const satirlar = [
       "Vp_ms;n;SHR;Is50;RockType",
       "5500;0.5;57;8.0;Granit",
